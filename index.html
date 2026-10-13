@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anonimizzatore di documenti</title>
+<meta name="description" content="Sostituisce nomi, indirizzi, IBAN e altri dati personali con segnaposto. Tutto resta sul tuo dispositivo.">
+<meta name="theme-color" content="#12161C">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2312161C'/%3E%3Crect x='8' y='6' width='16' height='20' rx='2' fill='%23fff'/%3E%3Crect x='11' y='11' width='10' height='3' fill='%2312161C'/%3E%3Crect x='11' y='17' width='7' height='3' fill='%23FFE45C'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#E9EDF1; --sheet:#FFFFFF; --ink:#12161C; --muted:#566170; --line:#C6CED8;
+  --mark:#FFE45C; --markink:#12161C; --bar:#12161C; --barink:#F4F6F8;
+  --accent:#12161C; --accentink:#FFFFFF; --focus:#2F6BFF;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --doc:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#0E1217; --sheet:#171C23; --ink:#E8ECF1; --muted:#9AA6B3; --line:#2A323C;
+    --mark:#E7C54A; --markink:#10141A; --bar:#E8ECF1; --barink:#10141A;
+    --accent:#E8ECF1; --accentink:#10141A; --focus:#7FA2FF; }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--ui)}
+main{max-width:1120px;margin:0 auto;padding:clamp(16px,4vw,40px) clamp(14px,4vw,32px) 48px}
+h1{font-size:clamp(2rem,5.5vw,3.3rem);line-height:1.02;letter-spacing:-.035em;font-weight:800;margin:0 0 10px}
+h2{font-size:1rem;font-weight:700;margin:0;letter-spacing:-.005em}
+.lede{max-width:56ch;color:var(--muted);margin:0 0 24px;font-size:1.05rem}
+.muted{color:var(--muted);font-size:.9rem}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px}
+.tab{font:inherit;font-weight:600;background:none;border:0;color:var(--muted);padding:10px 14px;min-height:44px;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--ink)}
+
+.block{margin:0 0 22px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:inherit;font-size:.92rem;font-weight:600;display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--accentink);cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
+textarea{width:100%;display:block;min-height:170px;resize:vertical;font:1.02rem/1.6 var(--doc);color:var(--ink);background:var(--sheet);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+textarea.small{min-height:90px}
+.doc{font:1.02rem/1.65 var(--doc);white-space:pre-wrap;overflow-wrap:anywhere;min-height:170px;max-height:440px;overflow:auto;padding:14px 16px;background:var(--sheet);border:1px solid var(--line);border-radius:8px}
+.empty{color:var(--muted);font-family:var(--ui);font-size:.92rem}
+.hint{margin:8px 0 0;color:var(--muted);font-size:.88rem}
+
+.chips,.seg{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:inherit;font-size:.9rem;display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
+.chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--accentink)}
+.chip b{font-weight:700;font-variant-numeric:tabular-nums;min-width:1.2em;text-align:center}
+.opt{position:relative}
+.opt input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.opt span{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 14px;border-radius:8px;border:1px solid var(--line);font-size:.9rem}
+.opt input:checked + span{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);font-weight:600}
+.opt input:focus-visible + span{outline:3px solid var(--focus);outline-offset:2px}
+.opt code{font:600 .78rem var(--mono);color:var(--muted)}
+
+details{margin:0 0 22px;border-top:1px solid var(--line);padding-top:12px}
+summary{cursor:pointer;font-weight:600;min-height:32px}
+details > *:not(summary){margin-top:10px}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:.92rem}
+.check input{margin-top:.25em;width:18px;height:18px}
+
+.panes{display:grid;gap:22px;grid-template-columns:1fr}
+@media (min-width:900px){.panes{grid-template-columns:1fr 1fr}}
+
+mark.m{background:var(--mark);color:var(--markink);border-radius:3px;padding:0 2px;cursor:pointer;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+mark.m.ign{background:transparent;color:inherit;text-decoration:line-through dashed;outline:1px dashed var(--muted)}
+.ph{background:var(--bar);color:var(--barink);font:600 .78em var(--mono);padding:.12em .45em;border-radius:3px;white-space:nowrap}
+.ph.bar{letter-spacing:-.05em}
+
+.warn{border-left:3px solid var(--mark);padding:2px 0 2px 12px;color:var(--muted);font-size:.9rem;margin:0 0 14px}
+footer{margin-top:36px;color:var(--muted);font-size:.88rem;max-width:70ch}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--accent);color:var(--accentink);padding:10px 16px;border-radius:8px;font-size:.92rem;opacity:0;pointer-events:none;transition:opacity .15s}
+.toast.on{opacity:1}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Anonimizzatore</h1>
+    <p class="lede">Incolla un testo o carica un file. Nomi, indirizzi, IBAN e altri dati personali diventano segnaposto. Il testo non lascia mai il tuo dispositivo.</p>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-anon" aria-selected="true" aria-controls="p-anon">Anonimizza</button>
+    <button class="tab" role="tab" id="t-rest" aria-selected="false" aria-controls="p-rest">Ripristina</button>
+  </div>
+
+  <section id="p-anon" role="tabpanel" aria-labelledby="t-anon">
+    <div class="block">
+      <div class="row">
+        <label for="src"><h2>Testo originale</h2></label>
+        <div class="actions">
+          <button class="btn ghost" id="sample" type="button">Prova con un esempio</button>
+          <label class="btn ghost" for="file" style="cursor:pointer">Carica file</label>
+          <input type="file" id="file" accept=".txt,.md,.csv,.tsv,.json,.xml,.html,.log,text/*" hidden>
+          <button class="btn ghost" id="clear" type="button">Svuota</button>
+        </div>
+      </div>
+      <textarea id="src" spellcheck="false" placeholder="Incolla qui il documento, oppure trascina un file di testo."></textarea>
+    </div>
+
+    <div class="block">
+      <div class="row"><h2>Cosa nascondere</h2></div>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div class="block">
+      <div class="row"><h2>Con cosa sostituirlo</h2></div>
+      <div class="seg" role="radiogroup" aria-label="Stile di sostituzione">
+        <label class="opt"><input type="radio" name="style" value="numbered" checked><span>Numerati <code>[PERSONA_1]</code></span></label>
+        <label class="opt"><input type="radio" name="style" value="generic"><span>Generici <code>[PERSONA]</code></span></label>
+        <label class="opt"><input type="radio" name="style" value="redact"><span>Oscurati <code>█████</code></span></label>
+        <label class="opt"><input type="radio" name="style" value="remove"><span>Eliminati</span></label>
+      </div>
+    </div>
+
+    <details>
+      <summary>Opzioni avanzate</summary>
+      <div>
+        <label for="custom" class="muted">Altri termini da nascondere, uno per riga (ad esempio il nome di una ditta)</label>
+        <textarea id="custom" class="small" spellcheck="false"></textarea>
+      </div>
+      <label class="check"><input type="checkbox" id="singles"><span>Riconosci anche i nomi isolati, come «Ciao Marco». Può dare qualche falso positivo.</span></label>
+    </details>
+
+    <div class="panes">
+      <section>
+        <div class="row"><h2>Dati trovati</h2><span class="muted" id="count"></span></div>
+        <div class="doc" id="found" aria-live="polite"></div>
+        <p class="hint">Tocca un dato evidenziato per escluderlo, toccalo di nuovo per includerlo.</p>
+      </section>
+      <section>
+        <div class="row">
+          <h2>Risultato</h2>
+          <div class="actions">
+            <button class="btn" id="copy" type="button">Copia</button>
+            <button class="btn ghost" id="dl" type="button">Scarica .txt</button>
+          </div>
+        </div>
+        <div class="doc" id="out"></div>
+        <div class="row" style="margin-top:10px">
+          <p class="hint" style="margin:0" id="maphint">La mappa serve per ripristinare i dati originali. Contiene i dati veri, quindi conservala al sicuro.</p>
+          <button class="btn ghost" id="dlmap" type="button">Scarica mappa</button>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section id="p-rest" role="tabpanel" aria-labelledby="t-rest" hidden>
+    <p class="warn">Il ripristino funziona con i segnaposto numerati, come [PERSONA_1]. Dopo un'anonimizzazione la mappa è già qui sotto, finché non chiudi la pagina.</p>
+    <div class="block">
+      <div class="row"><label for="rsrc"><h2>Testo con i segnaposto</h2></label></div>
+      <textarea id="rsrc" spellcheck="false" placeholder="Incolla qui il testo anonimizzato, ad esempio la risposta di un'altra app."></textarea>
+    </div>
+    <div class="block">
+      <div class="row">
+        <label for="mapjson"><h2>Mappa</h2></label>
+        <div class="actions">
+          <label class="btn ghost" for="mapfile" style="cursor:pointer">Carica mappa</label>
+          <input type="file" id="mapfile" accept=".json,application/json" hidden>
+        </div>
+      </div>
+      <textarea id="mapjson" class="small" spellcheck="false" placeholder='{"[PERSONA_1]": "..."}'></textarea>
+    </div>
+    <div class="actions" style="margin-bottom:18px">
+      <button class="btn" id="restore" type="button">Ripristina</button>
+      <button class="btn ghost" id="copyr" type="button">Copia</button>
+    </div>
+    <div class="doc" id="rout"><span class="empty">Il testo ripristinato comparirà qui.</span></div>
+  </section>
+
+  <footer>
+    Il riconoscimento di nomi e indirizzi si basa su regole e non è perfetto. Rileggi sempre il risultato prima di condividerlo. IBAN, codici fiscali, email, telefoni e carte di pagamento vengono invece riconosciuti con affidabilità alta.
+  </footer>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= ENGINE (nessun accesso al DOM) ================= */
+const L = 'A-Za-zÀ-ÖØ-öø-ÿ';
+const UPPER = 'A-ZÀ-ÖØ-Þ';
+const WORD = `[${UPPER}][${L}'’]+(?:-[${UPPER}][${L}]+)?`;
+const PART = '(?:di|de|del|della|dei|degli|dello|dal|dalla|da|lo|la|van|von|der|den)';
+const SEQ = `${WORD}(?:[ \\t](?:${PART}[ \\t])?${WORD}){0,3}`;
+const PARTSET = new Set('di de del della dei degli dello dal dalla da lo la van von der den'.split(' '));
+
+const NAMES = new Set(('marco mario luca giovanni giuseppe antonio francesco alessandro andrea paolo roberto stefano angelo davide simone matteo lorenzo riccardo fabio claudio massimo maurizio daniele michele salvatore vincenzo giorgio carlo pietro gabriele federico enrico franco giulio sergio luigi bruno gianni gianluca gianfranco emanuele edoardo filippo nicola tommaso valerio vittorio walter diego dario cristian christian fabrizio giacomo leonardo manuel mattia mauro mirko nicolò niccolò omar oscar pasquale raffaele renato rocco ruggero samuele saverio sebastiano silvio tiziano ugo umberto valentino adriano alberto alessio alfredo ambrogio antonino armando arturo augusto bernardo biagio carmine cesare cosimo costantino cristiano damiano domenico donato elia emilio enzo ettore eugenio ezio fausto felice fernando flavio fulvio gaetano gerardo gianmarco gianpaolo gianpiero guido guglielmo ignazio ivan jacopo lino livio lucio marcello marino martino mirco moreno natale nello nino orazio orlando ottavio patrizio piero pierpaolo pierluigi rino rodolfo romeo romano rosario sandro santo tullio vito zeno ' +
+  'maria anna giulia francesca sara chiara laura valentina alessandra elena paola roberta silvia federica martina elisa simona monica cristina barbara claudia daniela giovanna giorgia ilaria lucia luisa manuela marta michela nicoletta patrizia raffaella rita rosa serena stefania teresa veronica alice angela annalisa antonella beatrice carla carolina caterina cinzia clara concetta debora diana emma erika eleonora eva fabiana flavia gabriella gaia giada gloria grazia ilenia irene isabella jessica katia lara letizia lisa livia loredana lorena margherita mariangela marina marisa mariella melissa miriam morena nadia natalia nicole noemi olga ornella pamela piera renata romina rossella sabrina samantha sandra sofia sonia stella susanna tamara tiziana viola virginia vittoria wanda ada agnese aurora bianca camilla cecilia costanza delia donatella emanuela enrica ester filomena franca gemma giuseppina graziella ines iolanda lidia lina lorenza luciana marcella maura mirella nunzia orietta rachele rosalia rosanna rosaria sabina silvana tatiana valeria vera vincenza ' +
+  'john james michael david peter paul william thomas daniel sarah emily ahmed mohamed ali youssef fatima hassan igor').split(/\s+/));
+
+const STOP = new Set(('il lo la le i gli un uno una per con da di in su tra fra ha ho hai hanno sono è e ed o ma se che non come quando dove oggi ieri domani grazie ciao buongiorno buonasera gentile egregio egregi spettabile spett cordiali distinti saluti oggetto data allegato allegati firma luogo via viale piazza piazzale corso largo vicolo strada spa srl snc sas srls scarl cliente clienti signor signora signore signori sig dott dottor avv ing prof arch geom rag studio ufficio direzione comune provincia regione stato italia euro eur contratto articolo art pagina tel cell email pec cf iban piva nato nata residente domiciliato codice fiscale partita iva numero caro cara salve buon buona sezione capitolo titolo società azienda ditta banca conto ministero agenzia istituto università scuola ospedale').split(/\s+/));
+
+const TYPES = {
+  PERSONA:{label:'Nomi e cognomi', on:true, ph:'PERSONA', pri:12},
+  INDIRIZZO:{label:'Indirizzi', on:true, ph:'INDIRIZZO', pri:8},
+  IBAN:{label:'IBAN', on:true, ph:'IBAN', pri:1},
+  CF:{label:'Codici fiscali', on:true, ph:'CF', pri:3},
+  PIVA:{label:'Partite IVA', on:true, ph:'PIVA', pri:5},
+  EMAIL:{label:'Email', on:true, ph:'EMAIL', pri:4},
+  TELEFONO:{label:'Telefoni', on:true, ph:'TELEFONO', pri:9},
+  CARTA:{label:'Carte di pagamento', on:true, ph:'CARTA', pri:2},
+  DOCUMENTO:{label:'Documenti', on:true, ph:'DOCUMENTO', pri:6},
+  LUOGO:{label:'Luoghi', on:true, ph:'LUOGO', pri:11},
+  TARGA:{label:'Targhe', on:true, ph:'TARGA', pri:10},
+  DATA:{label:'Date', on:false, ph:'DATA', pri:14},
+  URL:{label:'Link e IP', on:false, ph:'LINK', pri:13},
+  CUSTOM:{label:'I tuoi termini', on:true, ph:'DATO', pri:0}
+};
+
+const STREET = '(?:[Vv]ia|[Vv]iale|[Vv]\\.le|[Pp]iazza|[Pp]\\.zza|[Pp]iazzale|[Cc]orso|[Cc]\\.so|[Ll]argo|[Vv]icolo|[Vv]ico|[Ss]trada|[Ll]ungomare|[Ll]ungotevere|[Cc]ontrada|[Bb]orgo|[Ll]ocalità|VIA|VIALE|PIAZZA|PIAZZALE|CORSO|LARGO|VICOLO|STRADA)';
+const AW0 = `(?:[${UPPER}0-9][${L}0-9'’]*)`;
+const AW = `(?:[${UPPER}][${L}0-9'’]*)`;
+const APART = "(?:di|de|del|della|dei|delle|degli|dello|dell['’]|d['’]|da|dal|san|santa)";
+const INIT = `(?:[${UPPER}]\\.[ \\t]*)*`;
+const WC = `[${UPPER}][${L}'’]+`;
+const CAPCITY = `\\d{5}[ \\t]+${WC}(?:[ \\t]+${WC}){0,2}(?:[ \\t]*\\([A-Z]{2}\\))?`;
+const CIV = '(?:[ \\t]*,?[ \\t]*(?:n\\.?[ \\t]*|n°[ \\t]*|civico[ \\t]+)?\\d{1,4}(?:[ \\t]?[A-Za-z](?![A-Za-z]))?(?:/\\w{1,3})?)?';
+const CITY = `${WORD}(?:[ \\t]+(?:${PART}[ \\t]+)?${WORD}){0,2}(?:[ \\t]*\\([A-Z]{2}\\))?`;
+const TITLES = '(?:Sig\\.ra|Sig\\.na|Sig\\.|Sigg\\.|Signor[ae]?|Dott\\.ssa|Dott\\.|Dr\\.ssa|Dr\\.|Avv\\.|Ing\\.|Prof\\.ssa|Prof\\.|Geom\\.|Arch\\.|Rag\\.|Notaio|Egr\\.|Egregio|Gent\\.ma|Gent\\.mo|Gentile|Gentilissim[oa]|Caro|Cara|Sig(?=\\s)|Dott(?=\\s)|Prof(?=\\s)|Avv(?=\\s)|Ing(?=\\s))';
+const LABELS = ['Nome e cognome','Cognome e nome','Nome','Cognome','Nominativo','Intestatario','Intestato a','Beneficiario','Titolare','Mittente','Destinatario','Cliente','Locatore','Conduttore','Locatario','Proprietario','Richiedente','Paziente','Dipendente','Referente','Testimone','Firmatario','Genitore','Studente','Candidato','Fornitore']
+  .map(s => `[${s[0]}${s[0].toLowerCase()}]${s.slice(1)}`).join('|');
+
+const RE = {
+  iban: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?\d{1,3})?(?![A-Za-z0-9])/g,
+  cf: /\b[A-Za-z]{6}\d{2}[A-EHLMPR-Ta-ehlmpr-t]\d{2}[A-Za-z]\d{3}[A-Za-z]\b/g,
+  email: /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g,
+  piva: /\b(?:P\.?\s?IVA|[Pp]artita\s+IVA|Part\.\s?IVA|VAT)\s*(?:n\.?|n°)?\s*[:.]?\s*(?:IT)?\s*(\d{11})\b/g,
+  card: /(?<![\d])(?:\d[ -]?){12,18}\d(?!\d)/g,
+  doc: /\b(?:C\.?I\.?|[Cc]arta\s+d['’]identit[àa]|[Pp]assaporto|[Pp]atente(?:\s+di\s+guida)?|[Tt]essera\s+sanitaria|[Dd]ocumento)\s*(?:n\.?|n°|numero)?\s*[:\-]?\s*([A-Z]{0,2}\d{5,9}[A-Z]{0,2}|[A-Z]{1,2}\d[A-Z0-9]{5,8})\b/g,
+  phone: /(?<![\w.,\/-])(?:(?:\+|00)\d{1,3}[\s.-]?)?(?:\(?0\d{1,3}\)?[\s.\/-]?\d{5,8}|\(?0\d{1,3}\)?[\s.\/-]?\d{3,4}[\s.-]?\d{3,4}|3\d{2}[\s.-]?\d{3}[\s.-]?\d{3,4}|3\d{2}[\s.-]?\d{6,7})(?!\w)/g,
+  phoneIntl: /(?<![\w.,\/-])\+\d{1,3}[\s.-]?\d{2,4}(?:[\s.-]?\d{2,4}){2,3}(?!\d)/g,
+  plate: /\b[A-HJ-NPR-TV-Z]{2}\s?\d{3}\s?[A-HJ-NPR-TV-Z]{2}\b/g,
+  date1: /\b\d{1,2}[\/.\-]\d{1,2}[\/.\-](?:\d{4}|\d{2})\b/g,
+  date2: /\b\d{1,2}°?\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+\d{4}\b/gi,
+  url: /\b(?:https?:\/\/|www\.)[^\s<>"']+/g,
+  ip: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
+  addr: new RegExp(`\\b${STREET}[ \\t]+${INIT}(?:${APART}[ \\t]*)?${AW0}(?:[ \\t]+(?:${APART}[ \\t]*)?${AW}){0,2}${CIV}(?:[ \\t]*,?[ \\t]*${CAPCITY})?`, 'g'),
+  capcity: new RegExp(`\\b${CAPCITY}`, 'g'),
+  nato: new RegExp(`\\bnat[oa][ \\t]+(?:a|in)[ \\t]+(${CITY})`, 'g'),
+  res: new RegExp(`\\b(?:residente|domiciliat[oa]|con[ \\t]+sede(?:[ \\t]+legale)?)[ \\t]+(?:a|in)[ \\t]+(${CITY})`, 'g'),
+  title: new RegExp(`\\b${TITLES}[ \\t]+(${SEQ})`, 'g'),
+  label: new RegExp(`\\b(?:${LABELS})[ \\t]*[:\\-–][ \\t]*(${SEQ})`, 'g'),
+  sotto: new RegExp(`\\b(?:[Ii]l|[Ll]a)[ \\t]+sottoscritt[oa][ \\t]+(${SEQ})`, 'g'),
+  seq: new RegExp(SEQ, 'g')
+};
+
+const norm = s => s.toLowerCase().replace(/\s+/g, ' ').trim();
+const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const luhn = d => { let sum = 0, alt = false; for (let i = d.length - 1; i >= 0; i--) { let n = +d[i]; if (alt) { n *= 2; if (n > 9) n -= 9; } sum += n; alt = !alt; } return sum % 10 === 0; };
+
+function tokensOf(text, s, e) {
+  const out = [], re = /\S+/g, sub = text.slice(s, e); let m;
+  while ((m = re.exec(sub))) out.push({t: m[0], s: s + m.index, e: s + m.index + m[0].length});
+  return out;
+}
+function trimName(text, s, e, strict) {
+  const t = tokensOf(text, s, e);
+  if (strict && t.length && STOP.has(t[0].t.toLowerCase())) return null;
+  while (t.length && STOP.has(t[0].t.toLowerCase())) t.shift();
+  while (t.length && STOP.has(t[t.length - 1].t.toLowerCase())) t.pop();
+  if (!t.length) return null;
+  return {s: t[0].s, e: t[t.length - 1].e};
+}
+function scan(text, re, type, opt = {}) {
+  const g = opt.group || 0, out = []; let m;
+  re.lastIndex = 0;
+  while ((m = re.exec(text))) {
+    if (!m[0].length) { re.lastIndex++; continue; }
+    let v = m[g]; if (!v) continue;
+    let s = g ? m.index + m[0].lastIndexOf(v) : m.index, e = s + v.length;
+    if (opt.trimEnd) while (e > s && /[.,;:!?)\]]/.test(text[e - 1])) e--;
+    if (e <= s) continue;
+    v = text.slice(s, e);
+    if (opt.validate && !opt.validate(v)) continue;
+    if (opt.name) { const t = trimName(text, s, e, true); if (!t) continue; s = t.s; e = t.e; v = text.slice(s, e); }
+    out.push({s, e, type, v});
+  }
+  return out;
+}
+function dictNames(text, singles) {
+  const out = []; let m;
+  const re = RE.seq; re.lastIndex = 0;
+  while ((m = re.exec(text))) {
+    const toks = tokensOf(text, m.index, m.index + m[0].length);
+    while (toks.length && STOP.has(toks[0].t.toLowerCase())) toks.shift();
+    while (toks.length && STOP.has(toks[toks.length - 1].t.toLowerCase())) toks.pop();
+    if (!toks.length) continue;
+    const has = toks.some(x => NAMES.has(x.t.toLowerCase()));
+    if (!has) continue;
+    if (toks.length === 1 && !singles) continue;
+    out.push({s: toks[0].s, e: toks[toks.length - 1].e, type: 'PERSONA', v: text.slice(toks[0].s, toks[toks.length - 1].e)});
+  }
+  return out;
+}
+function customScan(text, terms) {
+  const out = [];
+  for (const t of terms) {
+    const e = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?<![\\p{L}\\p{N}])${e}(?![\\p{L}\\p{N}])`, 'giu'); let m;
+    while ((m = re.exec(text))) { if (!m[0].length) { re.lastIndex++; continue; } out.push({s: m.index, e: m.index + m[0].length, type: 'CUSTOM', v: m[0]}); }
+  }
+  return out;
+}
+function resolve(c) {
+  const sorted = c.slice().sort((a, b) => TYPES[a.type].pri - TYPES[b.type].pri || (b.e - b.s) - (a.e - a.s) || a.s - b.s);
+  const acc = [];
+  for (const x of sorted) if (!acc.some(y => x.s < y.e && y.s < x.e)) acc.push(x);
+  return acc.sort((a, b) => a.s - b.s);
+}
+function propagate(text, acc) {
+  const toks = new Map();
+  for (const m of acc) {
+    if (m.type !== 'PERSONA' || m.off || m.ignored) continue;
+    for (const t of m.v.split(/\s+/)) {
+      const l = t.toLowerCase();
+      if (t.length >= 3 && !STOP.has(l) && !PARTSET.has(l)) toks.set(t, true);
+    }
+  }
+  if (!toks.size) return [];
+  const forms = new Set();
+  toks.forEach((_, t) => { forms.add(t); forms.add(t.toUpperCase()); forms.add(t[0].toUpperCase() + t.slice(1).toLowerCase()); });
+  const alt = [...forms].map(f => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).sort((a, b) => b.length - a.length).join('|');
+  const re = new RegExp(`(?<![\\p{L}\\p{N}'’])(?:${alt})(?![\\p{L}\\p{N}])`, 'gu');
+  const out = []; let m;
+  while ((m = re.exec(text))) {
+    const s = m.index, e = s + m[0].length;
+    if (acc.some(y => s < y.e && y.s < e)) continue;
+    out.push({s, e, type: 'PERSONA', v: m[0]});
+  }
+  return out;
+}
+
+function detect(text, o) {
+  let c = [];
+  const add = arr => { for (const x of arr) c.push(x); };
+  add(scan(text, RE.iban, 'IBAN', {validate: v => { const n = v.replace(/\s/g, ''); return n.length >= 15 && n.length <= 34; }}));
+  add(scan(text, RE.cf, 'CF'));
+  add(scan(text, RE.email, 'EMAIL'));
+  add(scan(text, RE.piva, 'PIVA', {group: 1}));
+  add(scan(text, RE.card, 'CARTA', {validate: v => { const d = v.replace(/\D/g, ''); return d.length >= 13 && d.length <= 19 && luhn(d) && !/^(\d)\1+$/.test(d); }}));
+  add(scan(text, RE.doc, 'DOCUMENTO', {group: 1}));
+  add(scan(text, RE.phone, 'TELEFONO', {validate: v => v.replace(/\D/g, '').length >= 6}));
+  add(scan(text, RE.phoneIntl, 'TELEFONO'));
+  add(scan(text, RE.plate, 'TARGA'));
+  add(scan(text, RE.date1, 'DATA'));
+  add(scan(text, RE.date2, 'DATA'));
+  add(scan(text, RE.url, 'URL', {trimEnd: true}));
+  add(scan(text, RE.ip, 'URL', {validate: v => v.split('.').every(n => +n <= 255)}));
+  add(scan(text, RE.addr, 'INDIRIZZO'));
+  add(scan(text, RE.capcity, 'INDIRIZZO', {validate: v => !STOP.has(v.split(/\s+/)[1].toLowerCase())}));
+  add(scan(text, RE.nato, 'LUOGO', {group: 1}));
+  add(scan(text, RE.res, 'LUOGO', {group: 1}));
+  add(scan(text, RE.title, 'PERSONA', {group: 1, name: true}));
+  add(scan(text, RE.label, 'PERSONA', {group: 1, name: true}));
+  add(scan(text, RE.sotto, 'PERSONA', {group: 1, name: true}));
+  add(dictNames(text, o.singles));
+  if (o.custom && o.custom.length) add(customScan(text, o.custom));
+  const flag = m => { m.key = m.type + '|' + norm(m.v); m.off = !o.enabled[m.type]; m.ignored = o.ignored.has(m.key); };
+  const acc = resolve(c);
+  acc.forEach(flag);
+  const extra = propagate(text, acc);
+  extra.forEach(flag);
+  return acc.concat(extra).sort((a, b) => a.s - b.s);
+}
+
+function personKey(v) { return v.split(/\s+/).map(x => x.toLowerCase()).filter(t => !PARTSET.has(t)).sort().join(' '); }
+function buildOutput(text, matches, style) {
+  const act = matches.filter(m => !m.off && !m.ignored);
+  const owner = new Map();
+  for (const m of act) {
+    if (m.type !== 'PERSONA') continue;
+    const toks = m.v.split(/\s+/); if (toks.length < 2) continue;
+    const k = personKey(m.v);
+    for (const t of toks) { const l = t.toLowerCase(); if (!PARTSET.has(l) && !owner.has(l)) owner.set(l, k); }
+  }
+  const keyOf = m => {
+    switch (m.type) {
+      case 'PERSONA': { const toks = m.v.split(/\s+/).map(x => x.toLowerCase()).filter(t => !PARTSET.has(t)); if (toks.length === 1 && owner.has(toks[0])) return owner.get(toks[0]); return personKey(m.v); }
+      case 'IBAN': case 'CARTA': case 'PIVA': case 'DOCUMENTO': case 'TARGA': case 'CF': return m.v.replace(/[\s.\-\/()]/g, '').toUpperCase();
+      case 'TELEFONO': { let d = m.v.replace(/\D/g, ''); if (d.startsWith('0039') && d.length >= 12) d = d.slice(4); else if (d.startsWith('39') && d.length >= 11) d = d.slice(2); return d; }
+      case 'EMAIL': return m.v.toLowerCase();
+      default: return norm(m.v);
+    }
+  };
+  const ids = {}, seen = new Map(), mapping = {};
+  let plain = '', html = '', last = 0;
+  for (const m of act) {
+    const k = m.type + '|' + keyOf(m);
+    let n = seen.get(k);
+    if (!n) { ids[m.type] = (ids[m.type] || 0) + 1; n = ids[m.type]; seen.set(k, n); }
+    const lab = TYPES[m.type].ph;
+    let ph = '';
+    if (style === 'numbered') ph = `[${lab}_${n}]`;
+    else if (style === 'generic') ph = `[${lab}]`;
+    else if (style === 'redact') ph = '█████';
+    if (style === 'numbered' && !(ph in mapping)) mapping[ph] = m.v;
+    const pre = text.slice(last, m.s);
+    plain += pre + ph;
+    html += esc(pre) + (ph ? `<span class="ph${style === 'redact' ? ' bar' : ''}">${esc(ph)}</span>` : '');
+    last = m.e;
+  }
+  const tail = text.slice(last);
+  return {plain: plain + tail, html: html + esc(tail), mapping, count: act.length};
+}
+/* ================= /ENGINE ================= */
+
+const SAMPLE = `Oggetto: richiesta di rimborso
+
+Il sottoscritto Mario Bianchi, nato a Gorgonzola (MI) il 14/03/1979, codice fiscale BNCMRA79C14E170K, residente in Via Giuseppe Garibaldi 12, 20121 Milano (MI), chiede il rimborso di 250 euro sul conto IT60X0542811101000000123456 intestato a Laura Verdi.
+
+Per contatti: mario.bianchi@example.it oppure 333 1234567.
+
+Cordiali saluti,
+Mario Bianchi`;
+
+/* ================= UI ================= */
+const $ = s => document.querySelector(s);
+const state = {enabled: {}, ignored: new Set(), style: 'numbered', singles: false};
+Object.entries(TYPES).forEach(([k, v]) => state.enabled[k] = v.on);
+let current = {matches: [], out: {plain: '', mapping: {}}};
+let restored = '';
+
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toast.id); toast.id = setTimeout(() => t.classList.remove('on'), 2200);
+}
+function download(name, content, type) {
+  const b = new Blob([content], {type: type || 'text/plain;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+}
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); }
+  catch (e) {
+    const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); ta.remove();
+  }
+  toast('Copiato negli appunti');
+}
+
+function run() {
+  const text = $('#src').value;
+  const terms = $('#custom').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const matches = detect(text, {enabled: state.enabled, ignored: state.ignored, singles: state.singles, custom: terms});
+  const out = buildOutput(text, matches, state.style);
+  current = {text, matches, out};
+
+  const found = $('#found'), fs = found.scrollTop;
+  if (!text) {
+    found.innerHTML = '<span class="empty">Qui compariranno i dati trovati.</span>';
+    $('#out').innerHTML = '<span class="empty">Qui comparirà il testo anonimizzato.</span>';
+  } else {
+    let html = '', last = 0;
+    matches.forEach((m, i) => {
+      if (m.off) return;
+      html += esc(text.slice(last, m.s)) +
+        `<mark class="m${m.ignored ? ' ign' : ''}" tabindex="0" role="button" aria-pressed="${m.ignored ? 'false' : 'true'}" data-i="${i}" title="${TYPES[m.type].label}">${esc(text.slice(m.s, m.e))}</mark>`;
+      last = m.e;
+    });
+    found.innerHTML = html + esc(text.slice(last));
+    found.scrollTop = fs;
+    $('#out').innerHTML = out.html;
+  }
+  $('#count').textContent = text ? `${out.count} ${out.count === 1 ? 'dato' : 'dati'} da nascondere` : '';
+
+  const counts = {};
+  matches.forEach(m => { if (!m.ignored) counts[m.type] = (counts[m.type] || 0) + 1; });
+  document.querySelectorAll('.chip').forEach(ch => {
+    ch.querySelector('b').textContent = counts[ch.dataset.t] || 0;
+    ch.setAttribute('aria-pressed', state.enabled[ch.dataset.t] ? 'true' : 'false');
+  });
+
+  const numbered = state.style === 'numbered';
+  $('#dlmap').disabled = !numbered || !Object.keys(out.mapping).length;
+  $('#maphint').textContent = numbered
+    ? 'La mappa serve per ripristinare i dati originali. Contiene i dati veri, quindi conservala al sicuro.'
+    : 'La mappa è disponibile solo con i segnaposto numerati.';
+  if (numbered && Object.keys(out.mapping).length) $('#mapjson').value = JSON.stringify(out.mapping, null, 2);
+}
+
+/* chips */
+(() => {
+  const box = $('#chips');
+  Object.entries(TYPES).forEach(([k, v]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.dataset.t = k;
+    b.innerHTML = `${esc(v.label)} <b>0</b>`;
+    b.addEventListener('click', () => { state.enabled[k] = !state.enabled[k]; run(); });
+    box.appendChild(b);
+  });
+})();
+
+/* eventi */
+let timer;
+$('#src').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { state.ignored.clear(); run(); }, 180); });
+$('#custom').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 180); });
+$('#singles').addEventListener('change', e => { state.singles = e.target.checked; run(); });
+document.querySelectorAll('input[name=style]').forEach(r => r.addEventListener('change', () => { state.style = r.value; run(); }));
+
+function toggleMark(el) {
+  const m = current.matches[+el.dataset.i]; if (!m) return;
+  state.ignored.has(m.key) ? state.ignored.delete(m.key) : state.ignored.add(m.key);
+  run();
+}
+$('#found').addEventListener('click', e => { const el = e.target.closest('mark'); if (el) toggleMark(el); });
+$('#found').addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('mark')) { e.preventDefault(); toggleMark(e.target); }
+});
+
+$('#sample').addEventListener('click', () => { $('#src').value = SAMPLE; state.ignored.clear(); run(); });
+$('#clear').addEventListener('click', () => { $('#src').value = ''; state.ignored.clear(); run(); $('#src').focus(); });
+$('#copy').addEventListener('click', () => current.text ? copyText(current.out.plain) : toast('Non c\'è ancora nulla da copiare'));
+$('#dl').addEventListener('click', () => current.text ? download('documento-anonimizzato.txt', current.out.plain) : toast('Non c\'è ancora nulla da scaricare'));
+$('#dlmap').addEventListener('click', () => download('mappa-segnaposto.json', JSON.stringify(current.out.mapping, null, 2), 'application/json'));
+
+/* file */
+const BINARY = /\.(pdf|docx?|xlsx?|pptx?|odt|ods|png|jpe?g|gif|heic|zip)$/i;
+function readInto(file, target, after) {
+  if (BINARY.test(file.name)) { toast('Per ora sono supportati solo file di testo'); return; }
+  const r = new FileReader();
+  r.onload = () => { target.value = String(r.result); after && after(); };
+  r.onerror = () => toast('Impossibile leggere il file');
+  r.readAsText(file);
+}
+$('#file').addEventListener('change', e => { const f = e.target.files[0]; if (f) readInto(f, $('#src'), () => { state.ignored.clear(); run(); }); e.target.value = ''; });
+$('#mapfile').addEventListener('change', e => { const f = e.target.files[0]; if (f) readInto(f, $('#mapjson')); e.target.value = ''; });
+['dragover', 'drop'].forEach(ev => $('#src').addEventListener(ev, e => {
+  if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+  e.preventDefault();
+  if (ev === 'drop') readInto(e.dataTransfer.files[0], $('#src'), () => { state.ignored.clear(); run(); });
+}));
+
+/* ripristino */
+$('#restore').addEventListener('click', () => {
+  let map;
+  try { map = JSON.parse($('#mapjson').value); } catch (e) { toast('La mappa non è un JSON valido'); return; }
+  let t = $('#rsrc').value;
+  if (!t) { toast('Incolla prima il testo con i segnaposto'); return; }
+  Object.keys(map).sort((a, b) => b.length - a.length).forEach(k => { t = t.split(k).join(map[k]); });
+  restored = t; $('#rout').textContent = t;
+});
+$('#copyr').addEventListener('click', () => restored ? copyText(restored) : toast('Non c\'è ancora nulla da copiare'));
+
+/* tab */
+function tab(which) {
+  const a = which === 'anon';
+  $('#p-anon').hidden = !a; $('#p-rest').hidden = a;
+  $('#t-anon').setAttribute('aria-selected', a); $('#t-rest').setAttribute('aria-selected', !a);
+}
+$('#t-anon').addEventListener('click', () => tab('anon'));
+$('#t-rest').addEventListener('click', () => tab('rest'));
+
+run();
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>
